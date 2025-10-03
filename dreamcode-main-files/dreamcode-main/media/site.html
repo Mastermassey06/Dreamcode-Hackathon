@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Water Quality Data</title>
+</head>
+
+<body>
+    <h1>Water Quality Data</h1>
+    <button id="fetchDataButton">Fetch Data</button>
+    <pre id="output"></pre>
+
+    <script>
+        document.getElementById('fetchDataButton').addEventListener('click', async function () {
+            // Geolocation to get user's current location
+            if (navigator.geolocation) {
+                const lat = 54.976764361327064;
+                const long = -1.606933517296546;
+                document.getElementById('output').textContent = `Latitude: ${lat}, Longitude: ${long}\nFetching station data...`;
+
+                try {
+                    // Fetch closest station based on location
+                    const closestStation = await getClosestStation(lat, long);
+
+                    if (!closestStation) {
+                        document.getElementById('output').textContent += '\nNo stations found nearby.';
+                        return;
+                    }
+
+                    document.getElementById('output').textContent += `\nClosest Station: ${closestStation}\nFetching water quality data...`;
+
+                    // Fetch measures for the closest station
+                    const measures = await getWaterQualityData(closestStation);
+
+                    if (measures) {
+                        // Calculate water quality based on available data
+                        console.log(measures)
+                        const quality = calculateWaterQuality(measures.ph, measures["dissolved oxygen"], measures.turbidity, measures.nitrate);
+                        document.getElementById('output').textContent += `\nWater Quality Calculation: ${quality}`;
+                    } else {
+                        document.getElementById('output').textContent += '\nNo valid water quality data found.';
+                    }
+                } catch (error) {
+                    document.getElementById('output').textContent = `Error: ${error.message}`;
+                }
+            } else {
+                document.getElementById('output').textContent = 'Geolocation is not supported by this browser.';
+            }
+        });
+
+        async function getClosestStation(lat, long) {
+            const url = `https://environment.data.gov.uk/hydrology/id/stations?lat=${lat}&long=${long}&dist=500000`;
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (!data.items || data.items.length === 0) {
+                    return null;
+                }
+
+                // Return the notation of the closest station
+                return data.items[0].notation;
+            } catch (error) {
+                console.error('Error fetching closest station:', error);
+                return null;
+            }
+        }
+
+        async function getWaterQualityData(stationNotation) {
+            const url = `https://environment.data.gov.uk/hydrology/id/stations/${stationNotation}/measures`;
+
+            // Define the observed properties for pH, nitrate, dissolved oxygen, and turbidity
+            const observedProperties = [
+                "ph",
+                "nitrate",
+                "dissolved-oxygen",
+                "turbidity"
+            ];
+
+            try {
+                // Build URL for querying the observed properties
+                const queryParams = observedProperties.map(property => `observedProperty=${property}`).join('&');
+                const fullUrl = `${url}?${queryParams}`;
+
+                const response = await fetch(fullUrl);
+                const data = await response.json();
+
+                if (!data.items || data.items.length === 0) {
+                    return null;
+                }
+
+                // Fetch the latest readings for the required parameters
+                const measures = {};
+
+                for (const measure of data.items) {
+                    const value = await fetchLatestReading(measure["@id"]);
+                    measures[measure.parameter.toLowerCase()] = value;
+                }
+
+                return measures;
+            } catch (error) {
+                console.error('Error fetching water quality data:', error);
+                return null;
+            }
+        }
+
+        async function fetchLatestReading(measureId) {
+            const url = `${measureId}/readings?latest`;
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (!data.items || data.items.length === 0) {
+                    return 'N/A';
+                }
+
+                return data.items[0].value; // Return the latest reading value
+            } catch (error) {
+                console.error('Error fetching latest reading:', error);
+                return 'N/A';
+            }
+        }
+
+        // Function to calculate the water quality based on parameters
+        function calculateWaterQuality(pH, dissolved_oxygen, turbidity, nitrate) {
+            // Example calculation logic based on water quality parameters
+            let quality = 0;
+
+            // Example conditions: Placeholder logic for water quality calculations
+            if (pH !== undefined) quality += pH > 7 ? 1 : 0; // Placeholder condition for pH
+            if (dissolved_oxygen !== undefined) quality += dissolved_oxygen > 5 ? 1 : 0; // Placeholder for DO
+            if (turbidity !== undefined) quality -= turbidity > 50 ? 1 : 0; // Placeholder for turbidity
+            if (nitrate !== undefined) quality -= nitrate > 10 ? 1 : 0; // Placeholder for nitrate
+
+            // Example quality range: 0 to 4 (based on the number of parameters that are within good ranges)
+            return quality;
+        }
+    </script>
+</body>
+
+</html>
